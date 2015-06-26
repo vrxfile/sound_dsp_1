@@ -37,8 +37,10 @@ using namespace std;
 #warning Eliminate global var
 
 #define array_count(A) (sizeof(A) / sizeof((A)[0]))		// Number of elements in array
-#define nsamples	2048								// Number of samples to read
+#define nsamples	8192								// Number of samples to read
 #define LLL			40
+#define Fs			44100
+#define ccc			10.2
 
 static const float F44100[] =
 { 9.1777136e-04, 9.2940698e-04, 9.4023589e-04, 9.5020394e-04, 9.5925569e-04,
@@ -112,11 +114,14 @@ static float ar_left[nsamples];							// Input array of first channel
 static float ar_right[nsamples];						// Input array of second channel
 static float br_left[nsamples + array_count(F44100)];	// Filtered array of first channel
 static float br_right[nsamples + array_count(F44100)];	// Filtered array of second channel
-char s1[128] = {0};										// Temp string
-int16_t x1, y1, oldx1, oldy1;							// Parameters to draw osc
-int16_t x2, y2, oldx2, oldy2;							// Parameters to draw osc
+static char s1[128] = {0};								// Temp string
+static int16_t x1, y1, oldx1, oldy1;					// Parameters to draw osc
+static int16_t x2, y2, oldx2, oldy2;					// Parameters to draw osc
 static const int32_t f44100_size = array_count(F44100);	// Size of filter
 static float conv_av[LLL * 2 + 1];						// Correlation array
+static int32_t idata1, idata2, idata3, idata4;			// Data read from inImage
+static int32_t maxidx, ddd;
+static float aaa, phi;
 
 template<>
 class SomethingDetector<TRIK_VIDTRANSCODE_CV_VIDEO_FORMAT_YUV422,
@@ -358,8 +363,6 @@ public:
 			TrikCvAlgOutArgs& _outArgs)
 	{
 		const int8_t* restrict srcImageRow = _inImage.m_ptr;		// Pointer to inImage
-		int32_t idata1, idata2, idata3, idata4;						// Data read from inImage
-
 
 		if (m_inImageDesc.m_height * m_inImageDesc.m_lineLength
 				> _inImage.m_size)
@@ -408,8 +411,26 @@ public:
 			}
 		}
 
+		// Max index
+		maxidx = DSPF_sp_maxidx(conv_av, LLL * 2 + 1);
+
+		// Extended params
+		ddd = maxidx - LLL - 1;
+		aaa = (float)ddd * 33000 / (2 * Fs);
+		if (abs(aaa) > abs(ccc))
+		{
+			if (aaa < 0) phi = -3.14159 / 2;
+			if (aaa > 0) phi = 3.14159 / 2;
+			if (aaa == 0) phi = 0;
+		}
+		else
+		{
+			phi = 3.14159 / 2 - acossp(aaa / ccc);
+		}
+
+
 		// Draw graphic
-		x1 = x2 = y1 = y2 = oldx1 = oldx2 = oldy1 = oldy2 = 0;
+		//x1 = x2 = y1 = y2 = oldx1 = oldx2 = oldy1 = oldy2 = 0;
 		/*
 		for (int32_t i = 0; i < nsamples; i ++)
 		{
@@ -423,6 +444,7 @@ public:
 			oldy2 = y2;
 		}
 		*/
+		/*
 		for (int32_t i = 0; i < (LLL * 2 + 1); i ++)
 		{
 			x1 = i * 319 / (LLL * 2 + 1);
@@ -431,11 +453,15 @@ public:
 			oldx1 = x1;
 			oldy1 = y1;
 		}
+		*/
 
 
-		sprintf(s1, "%f %f", br_left[1], br_left[100]);
-		drawString(s1, 0, 0, 1, _outImage, CL_ORANGE);
+		//sprintf(s1, "%f %f", br_left[1], br_left[100]);
 
+		sprintf(s1, "%d", maxidx);
+		drawString(s1, 0, 0, 2, _outImage, CL_BLUE);
+		sprintf(s1, "%f", phi / 3.14159 * 180);
+		drawString(s1, 0, 32, 2, _outImage, CL_ORANGE);
 
 
 		return true;
