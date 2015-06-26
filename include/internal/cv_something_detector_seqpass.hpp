@@ -38,6 +38,7 @@ using namespace std;
 
 #define array_count(A) (sizeof(A) / sizeof((A)[0]))		// Number of elements in array
 #define nsamples	2048								// Number of samples to read
+#define LLL			40
 
 static const float F44100[] =
 { 9.1777136e-04, 9.2940698e-04, 9.4023589e-04, 9.5020394e-04, 9.5925569e-04,
@@ -115,6 +116,7 @@ char s1[128] = {0};										// Temp string
 int16_t x1, y1, oldx1, oldy1;							// Parameters to draw osc
 int16_t x2, y2, oldx2, oldy2;							// Parameters to draw osc
 static const int32_t f44100_size = array_count(F44100);	// Size of filter
+static float conv_av[LLL * 2 + 1];						// Correlation array
 
 template<>
 class SomethingDetector<TRIK_VIDTRANSCODE_CV_VIDEO_FORMAT_YUV422,
@@ -133,6 +135,7 @@ private:
 	#define CL_BLACK	0x000000
 	#define CL_WHITE	0xFFFFFF
 	#define CL_GRAY		0x7F7F7F
+	#define CL_ORANGE	0xFF7F00
 	#define CL_YELLOW	0xFFFF00
 
 	// Font params
@@ -370,6 +373,7 @@ public:
 		// Draw some things
 		sprintf(s1, "\0");
 		drawString(s1, 0, 0, 1, _outImage, CL_YELLOW);
+
 		// Copy data to float point arrays
 		for (int32_t i = 0; i < nsamples; i ++)
 		{
@@ -381,25 +385,56 @@ public:
 			ar_right[i] = (float)((idata3 << 8) + idata4) / 32768;
 			srcImageRow+=4;
 		}
+
 		// Convolution with filter
 		DSPF_sp_convol(ar_left, F44100, br_left, f44100_size, array_count(br_left));
 		DSPF_sp_convol(ar_right, F44100, br_right, f44100_size, array_count(br_right));
 
+		// Correlation
+		for (int32_t i = -LLL; i <= 0; i ++)
+		{
+			conv_av[i + LLL] = 0;
+			for (int32_t j = 0; j < (nsamples + i); j ++)
+			{
+				conv_av[i + LLL] += br_right[j + f44100_size] * br_left[j - i + f44100_size];
+			}
+		}
+		for (int32_t i = 1; i <= LLL; i ++)
+		{
+			conv_av[i + LLL] = 0;
+			for (int32_t j = i; j < nsamples; j ++)
+			{
+				conv_av[i + LLL] += br_right[j + f44100_size] * br_left[j - i + f44100_size];
+			}
+		}
+
+		// Draw graphic
 		x1 = x2 = y1 = y2 = oldx1 = oldx2 = oldy1 = oldy2 = 0;
+		/*
 		for (int32_t i = 0; i < nsamples; i ++)
 		{
 			x1 = i * 319 / nsamples;
-			y1 = br_left[i+f44100_size] * 120 + 119 - 32;
-			y2 = br_right[i+f44100_size] * 120 + 119 + 32;
+			y1 = br_left[i + f44100_size] * 120 + 119 - 32;
+			y2 = br_right[i + f44100_size] * 120 + 119 + 32;
 			drawLine(oldx1, oldy1, x1, y1, _outImage, CL_YELLOW);
 			drawLine(oldx1, oldy2, x1, y2, _outImage, CL_WHITE);
 			oldx1 = x1;
 			oldy1 = y1;
 			oldy2 = y2;
 		}
+		*/
+		for (int32_t i = 0; i < (LLL * 2 + 1); i ++)
+		{
+			x1 = i * 319 / (LLL * 2 + 1);
+			y1 = conv_av[i] * 30 + 119;
+			drawLine(oldx1, oldy1, x1, y1, _outImage, CL_GREEN);
+			oldx1 = x1;
+			oldy1 = y1;
+		}
+
 
 		sprintf(s1, "%f %f", br_left[1], br_left[100]);
-		drawString(s1, 0, 0, 1, _outImage, CL_RED);
+		drawString(s1, 0, 0, 1, _outImage, CL_ORANGE);
 
 
 
