@@ -35,11 +35,11 @@ using namespace std;
 {
 
 #warning Eliminate global var
-static uint64_t s_rgb888hsv[640 * 480];
-static uint32_t s_wi2wo[640];
-static uint32_t s_hi2ho[480];
 
-const float F44100[] =
+#define array_count(A) (sizeof(A) / sizeof((A)[0]))		// Number of elements in array
+#define nsamples	2048								// Number of samples to read
+
+static const float F44100[] =
 { 9.1777136e-04, 9.2940698e-04, 9.4023589e-04, 9.5020394e-04, 9.5925569e-04,
 		9.6733440e-04, 9.7438205e-04, 9.8033939e-04, 9.8514593e-04,
 		9.8874002e-04, 9.9105882e-04, 9.9203841e-04, 9.9161376e-04,
@@ -105,6 +105,16 @@ const float F44100[] =
 		9.8033939e-04, 9.7438205e-04, 9.6733440e-04, 9.5925569e-04,
 		9.5020394e-04, 9.4023589e-04, 9.2940698e-04, };
 
+static uint32_t s_wi2wo[640];
+static uint32_t s_hi2ho[480];
+static float ar_left[nsamples];							// Input array of first channel
+static float ar_right[nsamples];						// Input array of second channel
+static float br_left[nsamples + array_count(F44100)];	// Filtered array of first channel
+static float br_right[nsamples + array_count(F44100)];	// Filtered array of second channel
+char s1[128] = {0};										// Temp string
+int16_t x1, y1, oldx1, oldy1;							// Parameters to draw osc
+int16_t x2, y2, oldx2, oldy2;							// Parameters to draw osc
+static const int32_t f44100_size = array_count(F44100);	// Size of filter
 
 template<>
 class SomethingDetector<TRIK_VIDTRANSCODE_CV_VIDEO_FORMAT_YUV422,
@@ -129,8 +139,6 @@ private:
 	#define FONT_SPACE	10
 	#define FONT_X		16
 	#define FONT_Y		8
-
-	#define array_count(A) (sizeof(A) / sizeof((A)[0]))
 
 	static uint16_t* restrict s_mult43_div; // allocated from fast ram
 	static uint16_t* restrict s_mult255_div; // allocated from fast ram
@@ -283,44 +291,6 @@ private:
 		}
 	}
 
-	// Convolution 2 arrays
-	int32_t __attribute__((always_inline)) conv_func(const float ar1[], const int32_t sz1
-					, float ar2[], const int32_t sz2
-					, float ar3[])
-	{
-		int32_t i;
-		int32_t sz3 = sz1 + sz2 - 1;
-		for (i = 0; i < sz3; i++)
-		{
-			int32_t j, jmin, jmax;
-			ar3[i] = 0;
-			jmin = (i >= sz2 - 1) ? i - (sz2 - 1) : 0;
-			jmax = (i < sz1 - 1) ? i : sz1 - 1;
-			for (j = jmin; j <= jmax; j++)
-			{
-				ar3[i] += ar1[j] * ar2[i - j];
-			}
-		}
-		return sz3;
-	}
-
-	// Get index of maximum value element
-	int32_t __attribute__((always_inline)) get_max_index(const float ar[], const int32_t sz)
-	{
-		int32_t maxidx = 0;
-		float maxval = -1e-16;
-		for (int32_t i = 0; i < sz; i++)
-		{
-			if (ar[i] > maxval)
-			{
-				maxval = ar[i];
-				maxidx = i;
-			}
-		}
-		return maxidx;
-	}
-
-
 public:
 	virtual bool setup(const TrikCvImageDesc& _inImageDesc,
 			const TrikCvImageDesc& _outImageDesc, int8_t* _fastRam,
@@ -385,15 +355,8 @@ public:
 			TrikCvAlgOutArgs& _outArgs)
 	{
 		const int8_t* restrict srcImageRow = _inImage.m_ptr;		// Pointer to inImage
-		char s1[128];												// Temp string
 		int32_t idata1, idata2, idata3, idata4;						// Data read from inImage
-		const int32_t nsamples = 256;								// Number of samples to read
-		float ar_left[nsamples];									// Input array of first channel
-		float ar_right[nsamples];									// Input array of second channel
-		float br_left[nsamples + array_count(F44100)];				// Filtered array of first channel
-		float br_right[nsamples + array_count(F44100)];				// Filtered array of second channel
-		double a[1];
-		double b[2];
+
 
 		if (m_inImageDesc.m_height * m_inImageDesc.m_lineLength
 				> _inImage.m_size)
@@ -405,10 +368,6 @@ public:
 				* m_outImageDesc.m_lineLength;
 
 		// Draw some things
-		//sprintf(s1, "b0 = %d, b5 = %d", *(srcImageRow + 0), *(srcImageRow + 5));
-		//sprintf(s1, "%d %d %d", array_count(F44100), array_count(ar_left), array_count(br_left));
-		DSPF_sp_autocor(ar_left, ar_right, 10, 10);
-		cosdp_v(a, b, 1);
 		sprintf(s1, "\0");
 		drawString(s1, 0, 0, 1, _outImage, CL_YELLOW);
 		// Copy data to float point arrays
@@ -422,11 +381,26 @@ public:
 			ar_right[i] = (float)((idata3 << 8) + idata4) / 32768;
 			srcImageRow+=4;
 		}
-		// Conversion with filter
-		conv_func(F44100, array_count(F44100), ar_left, array_count(ar_left), br_left);
-		conv_func(F44100, array_count(F44100), ar_right, array_count(ar_right), br_right);
-		sprintf(s1, "%f %f", ar_left[1], ar_left[100]);
-		drawString(s1, 0, 0, 1, _outImage, CL_YELLOW);
+		// Convolution with filter
+		DSPF_sp_convol(ar_left, F44100, br_left, f44100_size, array_count(br_left));
+		DSPF_sp_convol(ar_right, F44100, br_right, f44100_size, array_count(br_right));
+
+		x1 = x2 = y1 = y2 = oldx1 = oldx2 = oldy1 = oldy2 = 0;
+		for (int32_t i = 0; i < nsamples; i ++)
+		{
+			x1 = i * 319 / nsamples;
+			y1 = br_left[i+f44100_size] * 120 + 119 - 32;
+			y2 = br_right[i+f44100_size] * 120 + 119 + 32;
+			drawLine(oldx1, oldy1, x1, y1, _outImage, CL_YELLOW);
+			drawLine(oldx1, oldy2, x1, y2, _outImage, CL_WHITE);
+			oldx1 = x1;
+			oldy1 = y1;
+			oldy2 = y2;
+		}
+
+		sprintf(s1, "%f %f", br_left[1], br_left[100]);
+		drawString(s1, 0, 0, 1, _outImage, CL_RED);
+
 
 
 		return true;
