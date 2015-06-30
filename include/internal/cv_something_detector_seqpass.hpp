@@ -41,6 +41,8 @@ using namespace std;
 #define LLL			40
 #define Fs			44100
 #define ccc			10.2
+#define PI			3.14159265359
+#define MINVOL		16383
 
 static const float F44100[] =
 { 9.1777136e-04, 9.2940698e-04, 9.4023589e-04, 9.5020394e-04, 9.5925569e-04,
@@ -114,14 +116,17 @@ static float ar_left[nsamples];							// Input array of first channel
 static float ar_right[nsamples];						// Input array of second channel
 static float br_left[nsamples + array_count(F44100)];	// Filtered array of first channel
 static float br_right[nsamples + array_count(F44100)];	// Filtered array of second channel
-static char s1[128] = {0};								// Temp string
+static char s1[128];									// Temp string
 static int16_t x1, y1, oldx1, oldy1;					// Parameters to draw osc
 static int16_t x2, y2, oldx2, oldy2;					// Parameters to draw osc
 static const int32_t f44100_size = array_count(F44100);	// Size of filter
 static float conv_av[LLL * 2 + 1];						// Correlation array
 static int32_t idata1, idata2, idata3, idata4;			// Data read from inImage
-static int32_t maxidx, ddd;
-static float aaa, phi;
+static int32_t maxidx, ddd;								// Algorithm params
+static float aaa, phi;									// Algorithm params
+static int8_t d_flg;									// Detect flag (min detect volume)
+static int32_t volume;									// Detected volume
+static float minsig, maxsig;							// Minimum and maximum of signal
 
 template<>
 class SomethingDetector<TRIK_VIDTRANSCODE_CV_VIDEO_FORMAT_YUV422,
@@ -419,8 +424,8 @@ public:
 		aaa = (float)ddd * 33000 / (2 * Fs);
 		if (abs(aaa) > abs(ccc))
 		{
-			if (aaa < 0) phi = -3.14159 / 2;
-			if (aaa > 0) phi = 3.14159 / 2;
+			if (aaa < 0) phi = -PI / 2;
+			if (aaa > 0) phi = PI / 2;
 			if (aaa == 0) phi = 0;
 		}
 		else
@@ -428,6 +433,17 @@ public:
 			phi = 3.14159 / 2 - acossp(aaa / ccc);
 		}
 
+		// Volume
+		minsig = DSPF_sp_minval(br_left, array_count(br_left));
+		maxsig = DSPF_sp_maxval(br_left, array_count(br_left));
+		volume = (int32_t)((maxsig - minsig) * 32768);
+
+		// Output params
+		if (volume > MINVOL)
+			_outArgs.detectFlag = 1;
+		else
+			_outArgs.detectFlag = 0;
+		_outArgs.targetAngle = (int16_t)((float)phi / PI * 180);
 
 		// Draw graphic
 		//x1 = x2 = y1 = y2 = oldx1 = oldx2 = oldy1 = oldy2 = 0;
@@ -455,14 +471,14 @@ public:
 		}
 		*/
 
-
-		//sprintf(s1, "%f %f", br_left[1], br_left[100]);
-
-		sprintf(s1, "%d", maxidx);
+		sprintf(s1, "MAXIDX: %d", maxidx);
 		drawString(s1, 0, 0, 2, _outImage, CL_BLUE);
-		sprintf(s1, "%f", phi / 3.14159 * 180);
-		drawString(s1, 0, 32, 2, _outImage, CL_ORANGE);
-
+		sprintf(s1, "VOLUME: %d", volume);
+		drawString(s1, 0, 32, 2, _outImage, CL_GREEN);
+		sprintf(s1, "DETECT_FLAG: %d", _outArgs.detectFlag);
+		drawString(s1, 0, 64, 2, _outImage, CL_RED);
+		sprintf(s1, "ANGLE: %d", _outArgs.targetAngle);
+		drawString(s1, 0, 96, 2, _outImage, CL_ORANGE);
 
 		return true;
 	}
