@@ -42,7 +42,6 @@ using namespace std;
 #define Fs			44100
 #define ccc			10.2
 #define PI			3.14159265359
-#define MINVOL		16383
 
 static const float F44100[] =
 { 9.1777136e-04, 9.2940698e-04, 9.4023589e-04, 9.5020394e-04, 9.5925569e-04,
@@ -124,9 +123,8 @@ static float conv_av[LLL * 2 + 1];						// Correlation array
 static int32_t idata1, idata2, idata3, idata4;			// Data read from inImage
 static int32_t maxidx, ddd;								// Algorithm params
 static float aaa, phi;									// Algorithm params
-static int8_t d_flg;									// Detect flag (min detect volume)
-static int32_t volume;									// Detected volume
-static float minsig, maxsig;							// Minimum and maximum of signal
+static float minsigl, maxsigl;							// Minimum and maximum of signal
+static float minsigr, maxsigr;							// Minimum and maximum of signal
 
 template<>
 class SomethingDetector<TRIK_VIDTRANSCODE_CV_VIDEO_FORMAT_YUV422,
@@ -434,20 +432,18 @@ public:
 		}
 
 		// Volume
-		minsig = DSPF_sp_minval(br_left, array_count(br_left));
-		maxsig = DSPF_sp_maxval(br_left, array_count(br_left));
-		volume = (int32_t)((maxsig - minsig) * 32768);
+		minsigl = DSPF_sp_minval(br_left, array_count(br_left));
+		maxsigl = DSPF_sp_maxval(br_left, array_count(br_left));
+		minsigr = DSPF_sp_minval(br_right, array_count(br_right));
+		maxsigr = DSPF_sp_maxval(br_right, array_count(br_right));
 
-		// Output params
-		if (volume > MINVOL)
-			_outArgs.detectFlag = 1;
-		else
-			_outArgs.detectFlag = 0;
+		_outArgs.targetLeftVolume = (uint16_t)((maxsigl - minsigl) * 32768);
+		_outArgs.targetRightVolume = (uint16_t)((maxsigr - minsigr) * 32768);
 		_outArgs.targetAngle = (int16_t)((float)phi / PI * 180);
 
 		// Draw graphic
-		//x1 = x2 = y1 = y2 = oldx1 = oldx2 = oldy1 = oldy2 = 0;
 		/*
+		x1 = x2 = y1 = y2 = oldx1 = oldx2 = oldy1 = oldy2 = 0;
 		for (int32_t i = 0; i < nsamples; i ++)
 		{
 			x1 = i * 319 / nsamples;
@@ -460,6 +456,24 @@ public:
 			oldy2 = y2;
 		}
 		*/
+		x1 = x2 = y1 = y2 = oldx1 = oldx2 = oldy1 = oldy2 = 0;
+		for (int32_t i = 0; i < nsamples; i ++)
+		{
+			x1 = i * 319 / nsamples;
+			y1 = br_left[i + f44100_size] * 100 + 119 - 32;
+			drawLine(oldx1, oldy1, x1, y1, _outImage, CL_BLUE);
+			oldx1 = x1;
+			oldy1 = y1;
+		}
+		x1 = x2 = y1 = y2 = oldx1 = oldx2 = oldy1 = oldy2 = 0;
+		for (int32_t i = 0; i < nsamples; i ++)
+		{
+			x1 = i * 319 / nsamples;
+			y1 = br_right[i + f44100_size] * 100 + 119 + 32;
+			drawLine(oldx1, oldy1, x1, y1, _outImage, CL_RED);
+			oldx1 = x1;
+			oldy1 = y1;
+		}
 		/*
 		for (int32_t i = 0; i < (LLL * 2 + 1); i ++)
 		{
@@ -471,14 +485,12 @@ public:
 		}
 		*/
 
-		sprintf(s1, "MAXIDX: %d", maxidx);
-		drawString(s1, 0, 0, 2, _outImage, CL_BLUE);
-		sprintf(s1, "VOLUME: %d", volume);
-		drawString(s1, 0, 32, 2, _outImage, CL_GREEN);
-		sprintf(s1, "DETECT_FLAG: %d", _outArgs.detectFlag);
-		drawString(s1, 0, 64, 2, _outImage, CL_RED);
+		sprintf(s1, "L_VOLUME: %d", _outArgs.targetLeftVolume);
+		drawString(s1, 0, 0, 2, _outImage, CL_WHITE);
+		sprintf(s1, "R_VOLUME: %d", _outArgs.targetRightVolume);
+		drawString(s1, 0, 32, 2, _outImage, CL_WHITE);
 		sprintf(s1, "ANGLE: %d", _outArgs.targetAngle);
-		drawString(s1, 0, 96, 2, _outImage, CL_ORANGE);
+		drawString(s1, 0, 64, 2, _outImage, CL_WHITE);
 
 		return true;
 	}
