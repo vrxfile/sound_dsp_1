@@ -491,6 +491,9 @@ public:
 		drawString(s1, 0, 32, 2, _outImage, CL_WHITE);
 		sprintf(s1, "ANGLE: %d", _outArgs.targetAngle);
 		drawString(s1, 0, 64, 2, _outImage, CL_WHITE);
+		sprintf(s1, "VOL_COEFF: %d", _inArgs.volumeCoefficient);
+		drawString(s1, 0, 220, 1, _outImage, CL_YELLOW);
+
 
 		return true;
 	}
