@@ -387,8 +387,8 @@ public:
 			idata2 = *(srcImageRow + 1);
 			idata3 = *(srcImageRow + 2);
 			idata4 = *(srcImageRow + 3);
-			ar_left[i] = (float)((idata1 << 8) + idata2) / 32768;
-			ar_right[i] = (float)((idata3 << 8) + idata4) / 32768;
+			ar_left[i] = (float)((idata1 << 8) + idata2) * _inArgs.volumeCoefficient / 3276800;
+			ar_right[i] = (float)((idata3 << 8) + idata4) * _inArgs.volumeCoefficient / 3276800;
 			srcImageRow+=4;
 		}
 

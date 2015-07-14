@@ -55,7 +55,8 @@ typedef struct TRIK_VIDTRANSCODE_CV_InArgsAlg {
     XDAS_UInt8		detectValTo;   // [0..100]
     XDAS_Bool		autoDetectHsv;// [true|false]
 */
-	XDAS_Bool		inBoolParam;	// Input parameter
+	//XDAS_Bool		inBoolParam;		// Input parameter
+	XDAS_UInt8		volumeCoefficient;	// Volume coefficient (%)
 } TRIK_VIDTRANSCODE_CV_InArgsAlg;
 
 typedef struct TRIK_VIDTRANSCODE_CV_InArgs {
