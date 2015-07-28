@@ -37,7 +37,7 @@ using namespace std;
 #warning Eliminate global var
 
 #define array_count(A) (sizeof(A) / sizeof((A)[0]))		// Number of elements in array
-#define nsamples	8192								// Number of samples to read
+#define nsamples	16384								// Number of samples to read
 #define LLL			40
 #define Fs			44100
 #define ccc			10.2
