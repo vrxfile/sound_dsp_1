@@ -46,17 +46,11 @@ typedef struct TRIK_VIDTRANSCODE_CV_DynamicParams {
 
 
 typedef struct TRIK_VIDTRANSCODE_CV_InArgsAlg {
-/*
-	XDAS_UInt16		detectHueFrom; // [0..359]
-    XDAS_UInt16		detectHueTo;   // [0..359]
-    XDAS_UInt8		detectSatFrom; // [0..100]
-    XDAS_UInt8		detectSatTo;   // [0..100]
-    XDAS_UInt8		detectValFrom; // [0..100]
-    XDAS_UInt8		detectValTo;   // [0..100]
-    XDAS_Bool		autoDetectHsv;// [true|false]
-*/
 	//XDAS_Bool		inBoolParam;		// Input parameter
 	XDAS_UInt8		volumeCoefficient;	// Volume coefficient (%)
+	XDAS_UInt8		micDistance;		// Distance between microphones (cm)
+	XDAS_UInt16		windowSize;			// Correlation window size
+	XDAS_UInt16		numSamples;			// Number of sample to be processed
 } TRIK_VIDTRANSCODE_CV_InArgsAlg;
 
 typedef struct TRIK_VIDTRANSCODE_CV_InArgs {
@@ -66,20 +60,9 @@ typedef struct TRIK_VIDTRANSCODE_CV_InArgs {
 
 
 typedef struct TRIK_VIDTRANSCODE_CV_OutArgsAlg {
-/*
-	XDAS_Int8		targetX;    // [-100..100]
-    XDAS_Int8		targetY;    // [-100..100]
-    XDAS_UInt8		targetSize; // [0..100]
-    XDAS_UInt16		detectHue; // [0..256]
-    XDAS_UInt16		detectHueTolerance;   // [0..256]
-    XDAS_UInt16		detectSat; // [0..256]
-    XDAS_UInt16		detectSatTolerance;   // [0..256]
-    XDAS_UInt16		detectVal; // [0..256]
-    XDAS_UInt16		detectValTolerance;   // [0..256]
-*/
+	XDAS_Int16		targetAngle;		// [-180...180]
 	XDAS_UInt16		targetLeftVolume;	// [0...65535]
 	XDAS_UInt16		targetRightVolume;	// [0...65535]
-	XDAS_Int16		targetAngle;		// [-180...180]
 } TRIK_VIDTRANSCODE_CV_OutArgsAlg;
 
 typedef struct TRIK_VIDTRANSCODE_CV_OutArgs {
