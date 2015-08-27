@@ -113,10 +113,10 @@ static uint32_t s_wi2wo[640];
 static uint32_t s_hi2ho[480];
 static char s1[64];											// Temp string
 static const int32_t f44100_size = array_count(F44100);		// Size of filter
-static float ar_left[MAX_SAMPLES];							// Input array of first channel
-static float ar_right[MAX_SAMPLES];							// Input array of second channel
-static float br_left[MAX_SAMPLES + f44100_size];	// Filtered array of first channel
-static float br_right[MAX_SAMPLES + f44100_size];	// Filtered array of second channel
+static float ar_left[MAX_SAMPLES + f44100_size];			// Input array of first channel
+static float ar_right[MAX_SAMPLES + f44100_size];			// Input array of second channel
+static float br_left[MAX_SAMPLES];							// Filtered array of first channel
+static float br_right[MAX_SAMPLES];							// Filtered array of second channel
 static int16_t x1, y1, oldx1, oldy1;						// Parameters to draw osc
 static int16_t x2, y2, oldx2, oldy2;						// Parameters to draw osc
 static float conv_av[MAX_WIN_SIZE * 2 + 1];					// Correlation array
@@ -419,25 +419,34 @@ public:
 		}
 
 		// Copy data to float point arrays
-		for (int32_t i = 0; i < numSamples; i ++)
+		for (int32_t i = 0; i < (numSamples + f44100_size); i ++)
 		{
-			idata1 = *(srcImageRow + 0);
-			idata2 = *(srcImageRow + 1);
-			idata3 = *(srcImageRow + 2);
-			idata4 = *(srcImageRow + 3);
-			ar_left[i] = (float)((idata1 << 8) + idata2) * volumeCoefficient / 3276800;
-			ar_right[i] = (float)((idata3 << 8) + idata4) * volumeCoefficient / 3276800;
-			srcImageRow += 4;
+			if ((i < (f44100_size / 2)) || (i > (numSamples + (f44100_size / 2))))
+			{
+				ar_left[i] = ar_right[i] = 0;
+			}
+			else
+			{
+				idata1 = *(srcImageRow + 0);
+				idata2 = *(srcImageRow + 1);
+				idata3 = *(srcImageRow + 2);
+				idata4 = *(srcImageRow + 3);
+				ar_left[i] = (float)((idata1 << 8) + idata2) * volumeCoefficient / 3276800;
+				ar_right[i] = (float)((idata3 << 8) + idata4) * volumeCoefficient / 3276800;
+				srcImageRow += 4;
+			}
 		}
 
 		// Convolution with filter
 		//DSPF_sp_convol(ar_left, F44100, br_left, f44100_size, array_count(br_left));
 		//DSPF_sp_convol(ar_right, F44100, br_right, f44100_size, array_count(br_right));
-		DSPF_sp_convol(ar_left, F44100, br_left, f44100_size, f44100_size + numSamples);
-		DSPF_sp_convol(ar_right, F44100, br_right, f44100_size, f44100_size + numSamples);
-
+		//DSPF_sp_convol(ar_left, F44100, br_left, f44100_size, f44100_size + numSamples);
+		//DSPF_sp_convol(ar_right, F44100, br_right, f44100_size, f44100_size + numSamples);
+		DSPF_sp_convol(ar_left, F44100, br_left, f44100_size, numSamples);
+		DSPF_sp_convol(ar_right, F44100, br_right, f44100_size, numSamples);
 
 		// Correlation
+		/*
 		for (int32_t i = -windowSize; i <= 0; i ++)
 		{
 			conv_av[i + windowSize] = 0;
@@ -452,6 +461,23 @@ public:
 			for (int32_t j = i; j < numSamples; j ++)
 			{
 				conv_av[i + windowSize] += br_right[j + f44100_size] * br_left[j - i + f44100_size];
+			}
+		}
+		*/
+		for (int32_t i = -windowSize; i <= 0; i ++)
+		{
+			conv_av[i + windowSize] = 0;
+			for (int32_t j = 0; j < (numSamples + i); j ++)
+			{
+				conv_av[i + windowSize] += br_right[j] * br_left[j - i];
+			}
+		}
+		for (int32_t i = 1; i <= windowSize; i ++)
+		{
+			conv_av[i + windowSize] = 0;
+			for (int32_t j = i; j < numSamples; j ++)
+			{
+				conv_av[i + windowSize] += br_right[j] * br_left[j - i];
 			}
 		}
 
@@ -477,10 +503,14 @@ public:
 		//maxsigl = DSPF_sp_maxval(br_left, array_count(br_left));
 		//minsigr = DSPF_sp_minval(br_right, array_count(br_right));
 		//maxsigr = DSPF_sp_maxval(br_right, array_count(br_right));
-		minsigl = DSPF_sp_minval(br_left, f44100_size + numSamples);
-		maxsigl = DSPF_sp_maxval(br_left, f44100_size + numSamples);
-		minsigr = DSPF_sp_minval(br_right, f44100_size + numSamples);
-		maxsigr = DSPF_sp_maxval(br_right, f44100_size + numSamples);
+		//minsigl = DSPF_sp_minval(br_left, f44100_size + numSamples);
+		//maxsigl = DSPF_sp_maxval(br_left, f44100_size + numSamples);
+		//minsigr = DSPF_sp_minval(br_right, f44100_size + numSamples);
+		//maxsigr = DSPF_sp_maxval(br_right, f44100_size + numSamples);
+		minsigl = DSPF_sp_minval(br_left, numSamples);
+		maxsigl = DSPF_sp_maxval(br_left, numSamples);
+		minsigr = DSPF_sp_minval(br_right, numSamples);
+		maxsigr = DSPF_sp_maxval(br_right, numSamples);
 
 		_outArgs.targetLeftVolume = (uint16_t)((maxsigl - minsigl) * 32768);
 		_outArgs.targetRightVolume = (uint16_t)((maxsigr - minsigr) * 32768);
@@ -501,7 +531,7 @@ public:
 			oldy2 = y2;
 		}
 		*/
-		x1 = x2 = y1 = y2 = oldx1 = oldx2 = oldy1 = oldy2 = 0;
+		/*
 		for (int32_t i = 0; i < numSamples; i ++)
 		{
 			x1 = i * 319 / numSamples;
@@ -519,6 +549,26 @@ public:
 			oldx1 = x1;
 			oldy1 = y1;
 		}
+		*/
+		x1 = x2 = y1 = y2 = oldx1 = oldx2 = oldy1 = oldy2 = 0;
+		for (int32_t i = 0; i < (numSamples); i ++)
+		{
+			x1 = i * 319 / (numSamples);
+			y1 = br_left[i] * 100 + 119 - 32;
+			drawLine(oldx1, oldy1, x1, y1, _outImage, CL_BLUE);
+			oldx1 = x1;
+			oldy1 = y1;
+		}
+		x1 = x2 = y1 = y2 = oldx1 = oldx2 = oldy1 = oldy2 = 0;
+		for (int32_t i = 0; i < (numSamples); i ++)
+		{
+			x1 = i * 319 / (numSamples);
+			y1 = br_right[i] * 100 + 119 + 32;
+			drawLine(oldx1, oldy1, x1, y1, _outImage, CL_RED);
+			oldx1 = x1;
+			oldy1 = y1;
+		}
+
 		/*
 		for (int32_t i = 0; i < (LLL * 2 + 1); i ++)
 		{
@@ -536,7 +586,6 @@ public:
 		drawString(s1, 0, 32, 2, _outImage, CL_WHITE);
 		sprintf(s1, "ANGLE: %d", _outArgs.targetAngle);
 		drawString(s1, 0, 64, 2, _outImage, CL_WHITE);
-
 		sprintf(s1, "NUM_SAMPLES: %d", numSamples);
 		drawString(s1, 0, 172, 1, _outImage, CL_YELLOW);
 		sprintf(s1, "WIN_SIZE: %d", windowSize);
