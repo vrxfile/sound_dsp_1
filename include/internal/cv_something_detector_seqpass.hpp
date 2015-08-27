@@ -111,14 +111,14 @@ static const float F44100[] =
 
 static uint32_t s_wi2wo[640];
 static uint32_t s_hi2ho[480];
+static char s1[64];											// Temp string
+static const int32_t f44100_size = array_count(F44100);		// Size of filter
 static float ar_left[MAX_SAMPLES];							// Input array of first channel
 static float ar_right[MAX_SAMPLES];							// Input array of second channel
-static float br_left[MAX_SAMPLES + array_count(F44100)];	// Filtered array of first channel
-static float br_right[MAX_SAMPLES + array_count(F44100)];	// Filtered array of second channel
-static char s1[128];										// Temp string
+static float br_left[MAX_SAMPLES + f44100_size];	// Filtered array of first channel
+static float br_right[MAX_SAMPLES + f44100_size];	// Filtered array of second channel
 static int16_t x1, y1, oldx1, oldy1;						// Parameters to draw osc
 static int16_t x2, y2, oldx2, oldy2;						// Parameters to draw osc
-static const int32_t f44100_size = array_count(F44100);		// Size of filter
 static float conv_av[MAX_WIN_SIZE * 2 + 1];					// Correlation array
 static int32_t idata1, idata2, idata3, idata4;				// Data read from inImage
 static int32_t maxidx, ddd;									// Algorithm params
@@ -380,9 +380,8 @@ public:
 		_outImage.m_size = m_outImageDesc.m_height
 				* m_outImageDesc.m_lineLength;
 
-		// Draw some things
-		//sprintf(s1, "\0");
-		//drawString(s1, 0, 0, 1, _outImage, CL_YELLOW);
+		// Draw empty string
+		sprintf(s1, "\0"); drawString(s1, 0, 0, 1, _outImage, CL_YELLOW);
 
 		volumeCoefficient = _inArgs.volumeCoefficient;
 		numSamples = _inArgs.numSamples;
@@ -396,8 +395,12 @@ public:
 		if (volumeCoefficient > 100) {
 			volumeCoefficient = 100;
 		}
-		if (numSamples < 1) {
-			numSamples = 1;
+		if (numSamples % 2)
+		{
+			numSamples--;
+		}
+		if (numSamples < 2) {
+			numSamples = 2;
 		}
 		if (numSamples > MAX_SAMPLES) {
 			numSamples = MAX_SAMPLES;
@@ -424,12 +427,15 @@ public:
 			idata4 = *(srcImageRow + 3);
 			ar_left[i] = (float)((idata1 << 8) + idata2) * volumeCoefficient / 3276800;
 			ar_right[i] = (float)((idata3 << 8) + idata4) * volumeCoefficient / 3276800;
-			srcImageRow+=4;
+			srcImageRow += 4;
 		}
 
 		// Convolution with filter
-		DSPF_sp_convol(ar_left, F44100, br_left, f44100_size, array_count(br_left));
-		DSPF_sp_convol(ar_right, F44100, br_right, f44100_size, array_count(br_right));
+		//DSPF_sp_convol(ar_left, F44100, br_left, f44100_size, array_count(br_left));
+		//DSPF_sp_convol(ar_right, F44100, br_right, f44100_size, array_count(br_right));
+		DSPF_sp_convol(ar_left, F44100, br_left, f44100_size, f44100_size + numSamples);
+		DSPF_sp_convol(ar_right, F44100, br_right, f44100_size, f44100_size + numSamples);
+
 
 		// Correlation
 		for (int32_t i = -windowSize; i <= 0; i ++)
@@ -467,10 +473,14 @@ public:
 		}
 
 		// Volume
-		minsigl = DSPF_sp_minval(br_left, array_count(br_left));
-		maxsigl = DSPF_sp_maxval(br_left, array_count(br_left));
-		minsigr = DSPF_sp_minval(br_right, array_count(br_right));
-		maxsigr = DSPF_sp_maxval(br_right, array_count(br_right));
+		//minsigl = DSPF_sp_minval(br_left, array_count(br_left));
+		//maxsigl = DSPF_sp_maxval(br_left, array_count(br_left));
+		//minsigr = DSPF_sp_minval(br_right, array_count(br_right));
+		//maxsigr = DSPF_sp_maxval(br_right, array_count(br_right));
+		minsigl = DSPF_sp_minval(br_left, f44100_size + numSamples);
+		maxsigl = DSPF_sp_maxval(br_left, f44100_size + numSamples);
+		minsigr = DSPF_sp_minval(br_right, f44100_size + numSamples);
+		maxsigr = DSPF_sp_maxval(br_right, f44100_size + numSamples);
 
 		_outArgs.targetLeftVolume = (uint16_t)((maxsigl - minsigl) * 32768);
 		_outArgs.targetRightVolume = (uint16_t)((maxsigr - minsigr) * 32768);
@@ -531,11 +541,10 @@ public:
 		drawString(s1, 0, 172, 1, _outImage, CL_YELLOW);
 		sprintf(s1, "WIN_SIZE: %d", windowSize);
 		drawString(s1, 0, 188, 1, _outImage, CL_YELLOW);
-		sprintf(s1, "MIC_DIST: %f cm", micDistance);
+		sprintf(s1, "MIC_DIST: %3.1f cm", micDistance);
 		drawString(s1, 0, 204, 1, _outImage, CL_YELLOW);
 		sprintf(s1, "VOLUME: %d %%", volumeCoefficient);
 		drawString(s1, 0, 220, 1, _outImage, CL_YELLOW);
-
 
 		return true;
 	}
