@@ -37,11 +37,11 @@ using namespace std;
 #warning Eliminate global var
 
 #define array_count(A) (sizeof(A) / sizeof((A)[0]))		// Number of elements in array
-#define nsamples	16384								// Number of samples to read
-#define LLL			40
-#define Fs			44100
-#define ccc			10.2
-#define PI			3.14159265359
+#define MAX_SAMPLES		16384							// Maximum number of samples
+#define MAX_WIN_SIZE	128								// Maximum window size
+#define Fs				44100							// Sampling rate
+#define MAX_MIC_DIST	100								// Maximum distance between microphones (cm)
+#define PI				3.14159265359					// Pi constant
 
 static const float F44100[] =
 { 9.1777136e-04, 9.2940698e-04, 9.4023589e-04, 9.5020394e-04, 9.5925569e-04,
@@ -111,20 +111,24 @@ static const float F44100[] =
 
 static uint32_t s_wi2wo[640];
 static uint32_t s_hi2ho[480];
-static float ar_left[nsamples];							// Input array of first channel
-static float ar_right[nsamples];						// Input array of second channel
-static float br_left[nsamples + array_count(F44100)];	// Filtered array of first channel
-static float br_right[nsamples + array_count(F44100)];	// Filtered array of second channel
-static char s1[128];									// Temp string
-static int16_t x1, y1, oldx1, oldy1;					// Parameters to draw osc
-static int16_t x2, y2, oldx2, oldy2;					// Parameters to draw osc
-static const int32_t f44100_size = array_count(F44100);	// Size of filter
-static float conv_av[LLL * 2 + 1];						// Correlation array
-static int32_t idata1, idata2, idata3, idata4;			// Data read from inImage
-static int32_t maxidx, ddd;								// Algorithm params
-static float aaa, phi;									// Algorithm params
-static float minsigl, maxsigl;							// Minimum and maximum of signal
-static float minsigr, maxsigr;							// Minimum and maximum of signal
+static float ar_left[MAX_SAMPLES];							// Input array of first channel
+static float ar_right[MAX_SAMPLES];							// Input array of second channel
+static float br_left[MAX_SAMPLES + array_count(F44100)];	// Filtered array of first channel
+static float br_right[MAX_SAMPLES + array_count(F44100)];	// Filtered array of second channel
+static char s1[128];										// Temp string
+static int16_t x1, y1, oldx1, oldy1;						// Parameters to draw osc
+static int16_t x2, y2, oldx2, oldy2;						// Parameters to draw osc
+static const int32_t f44100_size = array_count(F44100);		// Size of filter
+static float conv_av[MAX_WIN_SIZE * 2 + 1];					// Correlation array
+static int32_t idata1, idata2, idata3, idata4;				// Data read from inImage
+static int32_t maxidx, ddd;									// Algorithm params
+static float aaa, phi;										// Algorithm params
+static float minsigl, maxsigl;								// Minimum and maximum of signal
+static float minsigr, maxsigr;								// Minimum and maximum of signal
+static uint16_t volumeCoefficient;							// Volume coefficient
+static uint16_t numSamples;									// Number of samples to be processed
+static uint16_t windowSize;									// Window size for correlation
+static float micDistance;									// Distance between microphones
 
 template<>
 class SomethingDetector<TRIK_VIDTRANSCODE_CV_VIDEO_FORMAT_YUV422,
@@ -377,18 +381,49 @@ public:
 				* m_outImageDesc.m_lineLength;
 
 		// Draw some things
-		sprintf(s1, "\0");
-		drawString(s1, 0, 0, 1, _outImage, CL_YELLOW);
+		//sprintf(s1, "\0");
+		//drawString(s1, 0, 0, 1, _outImage, CL_YELLOW);
+
+		volumeCoefficient = _inArgs.volumeCoefficient;
+		numSamples = _inArgs.numSamples;
+		windowSize = _inArgs.windowSize;
+		micDistance = (float)_inArgs.micDistance / 10;
+
+		// Test and correct input parameters
+		if (volumeCoefficient < 0) {
+			volumeCoefficient = 0;
+		}
+		if (volumeCoefficient > 100) {
+			volumeCoefficient = 100;
+		}
+		if (numSamples < 1) {
+			numSamples = 1;
+		}
+		if (numSamples > MAX_SAMPLES) {
+			numSamples = MAX_SAMPLES;
+		}
+		if (windowSize < 1) {
+			windowSize = 1;
+		}
+		if (windowSize > MAX_WIN_SIZE) {
+			windowSize = MAX_WIN_SIZE;
+		}
+		if (micDistance < 1) {
+			micDistance = 1;
+		}
+		if (micDistance > MAX_MIC_DIST) {
+			micDistance = MAX_MIC_DIST;
+		}
 
 		// Copy data to float point arrays
-		for (int32_t i = 0; i < nsamples; i ++)
+		for (int32_t i = 0; i < numSamples; i ++)
 		{
 			idata1 = *(srcImageRow + 0);
 			idata2 = *(srcImageRow + 1);
 			idata3 = *(srcImageRow + 2);
 			idata4 = *(srcImageRow + 3);
-			ar_left[i] = (float)((idata1 << 8) + idata2) * _inArgs.volumeCoefficient / 3276800;
-			ar_right[i] = (float)((idata3 << 8) + idata4) * _inArgs.volumeCoefficient / 3276800;
+			ar_left[i] = (float)((idata1 << 8) + idata2) * volumeCoefficient / 3276800;
+			ar_right[i] = (float)((idata3 << 8) + idata4) * volumeCoefficient / 3276800;
 			srcImageRow+=4;
 		}
 
@@ -397,30 +432,30 @@ public:
 		DSPF_sp_convol(ar_right, F44100, br_right, f44100_size, array_count(br_right));
 
 		// Correlation
-		for (int32_t i = -LLL; i <= 0; i ++)
+		for (int32_t i = -windowSize; i <= 0; i ++)
 		{
-			conv_av[i + LLL] = 0;
-			for (int32_t j = 0; j < (nsamples + i); j ++)
+			conv_av[i + windowSize] = 0;
+			for (int32_t j = 0; j < (numSamples + i); j ++)
 			{
-				conv_av[i + LLL] += br_right[j + f44100_size] * br_left[j - i + f44100_size];
+				conv_av[i + windowSize] += br_right[j + f44100_size] * br_left[j - i + f44100_size];
 			}
 		}
-		for (int32_t i = 1; i <= LLL; i ++)
+		for (int32_t i = 1; i <= windowSize; i ++)
 		{
-			conv_av[i + LLL] = 0;
-			for (int32_t j = i; j < nsamples; j ++)
+			conv_av[i + windowSize] = 0;
+			for (int32_t j = i; j < numSamples; j ++)
 			{
-				conv_av[i + LLL] += br_right[j + f44100_size] * br_left[j - i + f44100_size];
+				conv_av[i + windowSize] += br_right[j + f44100_size] * br_left[j - i + f44100_size];
 			}
 		}
 
 		// Max index
-		maxidx = DSPF_sp_maxidx(conv_av, LLL * 2 + 1);
+		maxidx = DSPF_sp_maxidx(conv_av, windowSize * 2 + 1);
 
 		// Extended params
-		ddd = maxidx - LLL - 1;
+		ddd = maxidx - windowSize - 1;
 		aaa = (float)ddd * 33000 / (2 * Fs);
-		if (abs(aaa) > abs(ccc))
+		if (abs(aaa) > abs(micDistance))
 		{
 			if (aaa < 0) phi = -PI / 2;
 			if (aaa > 0) phi = PI / 2;
@@ -428,7 +463,7 @@ public:
 		}
 		else
 		{
-			phi = 3.14159 / 2 - acossp(aaa / ccc);
+			phi = 3.14159 / 2 - acossp(aaa / micDistance);
 		}
 
 		// Volume
@@ -457,18 +492,18 @@ public:
 		}
 		*/
 		x1 = x2 = y1 = y2 = oldx1 = oldx2 = oldy1 = oldy2 = 0;
-		for (int32_t i = 0; i < nsamples; i ++)
+		for (int32_t i = 0; i < numSamples; i ++)
 		{
-			x1 = i * 319 / nsamples;
+			x1 = i * 319 / numSamples;
 			y1 = br_left[i + f44100_size] * 100 + 119 - 32;
 			drawLine(oldx1, oldy1, x1, y1, _outImage, CL_BLUE);
 			oldx1 = x1;
 			oldy1 = y1;
 		}
 		x1 = x2 = y1 = y2 = oldx1 = oldx2 = oldy1 = oldy2 = 0;
-		for (int32_t i = 0; i < nsamples; i ++)
+		for (int32_t i = 0; i < numSamples; i ++)
 		{
-			x1 = i * 319 / nsamples;
+			x1 = i * 319 / numSamples;
 			y1 = br_right[i + f44100_size] * 100 + 119 + 32;
 			drawLine(oldx1, oldy1, x1, y1, _outImage, CL_RED);
 			oldx1 = x1;
@@ -491,7 +526,14 @@ public:
 		drawString(s1, 0, 32, 2, _outImage, CL_WHITE);
 		sprintf(s1, "ANGLE: %d", _outArgs.targetAngle);
 		drawString(s1, 0, 64, 2, _outImage, CL_WHITE);
-		sprintf(s1, "VOL_COEFF: %d", _inArgs.volumeCoefficient);
+
+		sprintf(s1, "NUM_SAMPLES: %d", numSamples);
+		drawString(s1, 0, 190, 1, _outImage, CL_YELLOW);
+		sprintf(s1, "WIN_SIZE: %d", windowSize);
+		drawString(s1, 0, 200, 1, _outImage, CL_YELLOW);
+		sprintf(s1, "MIC_DIST: %f cm", micDistance);
+		drawString(s1, 0, 210, 1, _outImage, CL_YELLOW);
+		sprintf(s1, "VOLUME: %d %%", volumeCoefficient);
 		drawString(s1, 0, 220, 1, _outImage, CL_YELLOW);
 
 
