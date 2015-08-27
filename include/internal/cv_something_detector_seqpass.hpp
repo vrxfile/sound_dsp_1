@@ -528,11 +528,11 @@ public:
 		drawString(s1, 0, 64, 2, _outImage, CL_WHITE);
 
 		sprintf(s1, "NUM_SAMPLES: %d", numSamples);
-		drawString(s1, 0, 190, 1, _outImage, CL_YELLOW);
+		drawString(s1, 0, 172, 1, _outImage, CL_YELLOW);
 		sprintf(s1, "WIN_SIZE: %d", windowSize);
-		drawString(s1, 0, 200, 1, _outImage, CL_YELLOW);
+		drawString(s1, 0, 188, 1, _outImage, CL_YELLOW);
 		sprintf(s1, "MIC_DIST: %f cm", micDistance);
-		drawString(s1, 0, 210, 1, _outImage, CL_YELLOW);
+		drawString(s1, 0, 204, 1, _outImage, CL_YELLOW);
 		sprintf(s1, "VOLUME: %d %%", volumeCoefficient);
 		drawString(s1, 0, 220, 1, _outImage, CL_YELLOW);
 
